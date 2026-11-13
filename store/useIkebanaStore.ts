@@ -1,12 +1,17 @@
 import { create } from 'zustand';
 
+export interface UploadedImage {
+  base64: string;
+  mimeType: string;
+}
+
 export interface InventoryItem {
   id: string;
   name: string;
   role: 'vessel' | 'shin' | 'soe' | 'hikae' | 'anchor' | 'foliage';
   dimensions: string;
   naturalCurvatureDegrees: number;
-  notes: string;
+  notes?: string;
   imageUrl?: string;
 }
 
@@ -35,16 +40,22 @@ export interface ArrangementOption {
 }
 
 interface IkebanaState {
-  uploadedImages: { base64: string; mimeType: string }[];
+  uploadedImages: UploadedImage[];
   inventory: InventoryItem[];
   arrangements: ArrangementOption[];
-  selectedStyleId: string;
+  selectedStyleId: ArrangementOption['styleId'];
   activeStep: number;
-  setUploadedImages: (imgs: { base64: string; mimeType: string }[]) => void;
+  activeStepIndex: number;
+  renderedPreviewUrl: string | null;
+
+  setUploadedImages: (images: UploadedImage[]) => void;
   setAnalysisResult: (items: InventoryItem[], arrangements: ArrangementOption[]) => void;
   removeInventoryItem: (id: string) => void;
-  setSelectedStyleId: (styleId: string) => void;
-  setActiveStep: (step: number) => void;
+  selectStyle: (styleId: ArrangementOption['styleId']) => void;
+  setActiveStep: (index: number) => void;
+  setActiveStepIndex: (index: number) => void;
+  setRenderedPreviewUrl: (url: string | null) => void;
+  resetSession: () => void;
 }
 
 export const useIkebanaStore = create<IkebanaState>((set) => ({
@@ -52,19 +63,50 @@ export const useIkebanaStore = create<IkebanaState>((set) => ({
   inventory: [],
   arrangements: [],
   selectedStyleId: 'moribana-slanted',
-  activeStep: 1,
-  setUploadedImages: (imgs) => set({ uploadedImages: imgs }),
+  activeStep: 0,
+  activeStepIndex: 0,
+  renderedPreviewUrl: null,
+
+  setUploadedImages: (images) => set({ uploadedImages: images }),
+
   setAnalysisResult: (items, arrangements) =>
     set({
       inventory: items,
       arrangements,
-      selectedStyleId: arrangements[0]?.styleId || 'moribana-slanted',
-      activeStep: 1,
+      selectedStyleId: arrangements[0]?.styleId ?? 'moribana-slanted',
+      activeStep: 0,
+      activeStepIndex: 0,
+      renderedPreviewUrl: null,
     }),
+
   removeInventoryItem: (id) =>
     set((state) => ({
       inventory: state.inventory.filter((item) => item.id !== id),
+      renderedPreviewUrl: null,
     })),
-  setSelectedStyleId: (styleId) => set({ selectedStyleId: styleId }),
-  setActiveStep: (step) => set({ activeStep: step }),
+
+  selectStyle: (styleId) =>
+    set((state) => ({
+      selectedStyleId: styleId,
+      activeStep: 0,
+      activeStepIndex: 0,
+      renderedPreviewUrl: state.selectedStyleId === styleId ? state.renderedPreviewUrl : null,
+    })),
+
+  setActiveStep: (index) => set({ activeStep: index, activeStepIndex: index }),
+
+  setActiveStepIndex: (index) => set({ activeStep: index, activeStepIndex: index }),
+
+  setRenderedPreviewUrl: (url) => set({ renderedPreviewUrl: url }),
+
+  resetSession: () =>
+    set({
+      uploadedImages: [],
+      inventory: [],
+      arrangements: [],
+      selectedStyleId: 'moribana-slanted',
+      activeStep: 0,
+      activeStepIndex: 0,
+      renderedPreviewUrl: null,
+    }),
 }));
