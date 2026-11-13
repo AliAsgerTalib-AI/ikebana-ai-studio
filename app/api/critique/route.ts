@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI, Type, Schema } from '@google/genai';
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
+export const maxDuration = 60;
 
 const critiqueResponseSchema: Schema = {
   type: Type.OBJECT,
@@ -108,12 +106,15 @@ const critiqueResponseSchema: Schema = {
 
 export async function POST(req: NextRequest) {
   try {
-    if (!process.env.GEMINI_API_KEY) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
       return NextResponse.json(
-        { error: 'GEMINI_API_KEY is not configured in .env.local.' },
+        { error: 'GEMINI_API_KEY is not configured.' },
         { status: 500 }
       );
     }
+
+    const ai = new GoogleGenAI({ apiKey });
 
     const body = await req.json();
     const { imageBase64, mimeType, targetPlan } = body;
@@ -125,7 +126,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Strip data URL prefix ("data:image/jpeg;base64,") if present
     const cleanBase64 = imageBase64.includes(',')
       ? imageBase64.split(',')[1]
       : imageBase64;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI, Type, Schema } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const maxDuration = 60;
 
 const inventoryAnalysisSchema: Schema = {
   type: Type.OBJECT,
@@ -98,12 +98,15 @@ const inventoryAnalysisSchema: Schema = {
 
 export async function POST(req: NextRequest) {
   try {
-    if (!process.env.GEMINI_API_KEY) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
       return NextResponse.json(
-        { error: 'GEMINI_API_KEY is not configured in .env.local.' },
+        { error: 'GEMINI_API_KEY is not configured.' },
         { status: 500 }
       );
     }
+
+    const ai = new GoogleGenAI({ apiKey });
 
     const { images } = await req.json();
     if (!Array.isArray(images) || images.length === 0) {
@@ -126,20 +129,20 @@ export async function POST(req: NextRequest) {
 
     const prompt = `You are a master Ikebana structural architect and botanical photogrammetry analyst.
 
-    STEP 1 — REFERENCE SCALE CALIBRATION:
-    - First, check if a ruler, measuring tape, or grid mat is visible in the photo(s).
-    - If a ruler is present, calibrate pixel-to-millimeter scale directly from its visible centimeter/millimeter or inch graduations before measuring any botanical element or vessel.
-    - If no ruler is visible, estimate realistic proportions conservatively based on standard flower head and ceramic vessel sizes.
+STEP 1 — REFERENCE SCALE CALIBRATION:
+- Check if a ruler, measuring tape, or grid mat is visible in the photo(s).
+- If a ruler is present, calibrate pixel-to-millimeter scale directly from its visible graduations before measuring any botanical element or vessel.
+- If no ruler is visible, estimate realistic proportions conservatively.
 
-    STEP 2 — ZERO-HALLUCINATION INVENTORY EXTRACTION:
-    - Extract ONLY the physical vessels, branches, flower stems, foliage, and stones/twigs visibly present in the photo(s). Do NOT list the ruler itself as a botanical inventory item.
-    - Record accurate millimeter dimensions (e.g., "340mm length, 7mm caliper" or "215mm diameter x 60mm height"), natural curvature in degrees, and structural roles (vessel, shin, soe, hikae, anchor, foliage).
+STEP 2 — ZERO-HALLUCINATION INVENTORY EXTRACTION:
+- Extract ONLY physical vessels, branches, flower stems, foliage, and stones/twigs visibly present in the photo(s). Do NOT list the ruler itself as a botanical item.
+- Record millimeter dimensions, natural curvature in degrees, and structural roles (vessel, shin, soe, hikae, anchor, foliage).
 
-    STEP 3 — THREE ZERO-KENZAN ARRANGEMENT BLUEPRINTS:
-    - Generate 3 compositions ("moribana-slanted", "moribana-upright", "jiyuka-freestyle") tailored strictly to the calibrated millimeter dimensions of the detected items.
-    - Ensure Shin length respects classical vessel proportion rules (~1.5x vessel diameter + height) based on the ruler-calibrated measurements.
-    - Engineer a Zero-Kenzan DIY Organic Anchor Mechanism using only detected stones, forked-twig wedges (Komidome), cross-split stem bases (Juji-dome), or vessel-rim tension.
-    - Provide 4 to 5 sequential steps per style with exact millimeter Mizukiri underwater cut specs, hand-warmed Tameru bending guidance, and placementAngles starting with the tilt degree (e.g., "45° forward tilt, 30° left azimuth").`;
+STEP 3 — THREE ZERO-KENZAN ARRANGEMENT BLUEPRINTS:
+- Generate 3 compositions ("moribana-slanted", "moribana-upright", "jiyuka-freestyle") using ONLY detected items and organic anchoring (stones, Komidome forked-twig wedges, Juji-dome cross-splits, or rim tension).
+- Ensure Shin length respects classical vessel proportions (~1.5x vessel diameter + height) based on calibrated measurements.
+- Include 4-5 sequential steps per style with millimeter Mizukiri underwater cuts, hand-warmed Tameru bending guidance, and placementAngles starting with the tilt degree (e.g., "45° forward tilt, 30° left azimuth").`;
+
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: [{ role: 'user', parts: [{ text: prompt }, ...imageParts] }],
