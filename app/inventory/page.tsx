@@ -20,6 +20,7 @@ import {
   InventoryItem,
   ArrangementOption,
 } from '@/store/useIkebanaStore';
+import { compressImageFile } from '@/utils/imageCompression';
 
 const ROLE_LABELS: Record<InventoryItem['role'], string> = {
   vessel: 'Vessel',
@@ -243,14 +244,12 @@ export default function InventoryPage() {
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Populate store with realistic sample materials for instant desktop testing
   const handleLoadSampleMaterials = () => {
     setErrorMessage(null);
     setUploadedImages([]);
     setAnalysisResult(SAMPLE_INVENTORY, SAMPLE_ARRANGEMENTS);
   };
 
-  // Convert selected FileList into base64 payloads and call /api/analyze-inventory
   const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -260,21 +259,10 @@ export default function InventoryPage() {
 
     try {
       const fileArray = Array.from(files);
-      const base64Promises = fileArray.map(
-        (file) =>
-          new Promise<{ base64: string; mimeType: string }>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () =>
-              resolve({
-                base64: reader.result as string,
-                mimeType: file.type || 'image/jpeg',
-              });
-            reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
-            reader.readAsDataURL(file);
-          })
+      const encodedImages = await Promise.all(
+        fileArray.map((file) => compressImageFile(file, 1600, 0.84))
       );
 
-      const encodedImages = await Promise.all(base64Promises);
       const combinedImages = [...uploadedImages, ...encodedImages];
       setUploadedImages(combinedImages);
 
@@ -298,9 +286,9 @@ export default function InventoryPage() {
 
       setAnalysisResult(itemsWithPreview, data.arrangements || []);
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : 'Unable to process uploaded materials.';
-      setErrorMessage(msg);
+      setErrorMessage(
+        err instanceof Error ? err.message : 'Unable to process uploaded materials.'
+      );
     } finally {
       setIsAnalyzing(false);
       e.target.value = '';
@@ -316,7 +304,6 @@ export default function InventoryPage() {
 
   return (
     <div className="bg-surface-base text-text-primary antialiased min-h-screen flex flex-col font-body-regular selection:bg-primary-fixed max-w-[430px] mx-auto w-full relative shadow-xl border-x border-border-hairline/60">
-      {/* Hidden File Inputs */}
       <input
         ref={cameraInputRef}
         type="file"
@@ -334,7 +321,6 @@ export default function InventoryPage() {
         className="hidden"
       />
 
-      {/* Sticky Top App Bar */}
       <header className="sticky top-0 w-full z-40 pt-safe bg-surface-base/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] border-b border-border-hairline/40">
         <div className="h-14 px-margin flex items-center justify-between">
           <button
@@ -345,20 +331,16 @@ export default function InventoryPage() {
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-
           <h1 className="font-serif text-[17px] font-semibold tracking-tight text-text-primary">
             生け花 · Studio
           </h1>
-
           <span className="font-label-micro text-[11px] font-semibold text-accent-moss bg-primary-fixed/80 px-2.5 py-1 rounded-full">
             Step 1 of 3: Inventory
           </span>
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 flex flex-col px-margin pt-4 pb-36 gap-5">
-        {/* Camera & Batch Dropzone */}
         <section className="relative rounded-2xl border-2 border-dashed border-border-hairline bg-surface-card p-5 flex flex-col items-center text-center shadow-xs">
           <div className="w-13 h-13 rounded-full bg-primary-fixed flex items-center justify-center mb-3">
             {isAnalyzing ? (
@@ -374,13 +356,12 @@ export default function InventoryPage() {
               : 'Capture or Upload Your Materials'}
           </h2>
 
-          <p className="font-body-small text-[13px] text-text-muted mt-1 max-w-[280px] leading-relaxed">
+          <p className="font-body-small text-[13px] text-text-muted mt-1 max-w-[290px] leading-relaxed">
             {isAnalyzing
-              ? 'Measuring stem calipers, natural arcs, and organic DIY anchoring possibilities.'
-              : 'Lay stems, branches, vessel, and stones on a flat, neutral surface with natural light.'}
+              ? 'Calibrating millimeter scale and isolating botanical elements...'
+              : 'Place a ruler beside your stems, vessel, and stones on a flat neutral surface for exact millimeter sizing.'}
           </p>
 
-          {/* Uploaded Photo Thumbnails Strip */}
           {uploadedImages.length > 0 && (
             <div className="flex items-center gap-2 mt-3 overflow-x-auto max-w-full py-1">
               {uploadedImages.map((img, idx) => (
@@ -398,7 +379,6 @@ export default function InventoryPage() {
             </div>
           )}
 
-          {/* Dual Action Pill Buttons */}
           <div className="grid grid-cols-2 gap-2.5 w-full mt-4">
             <button
               type="button"
@@ -409,7 +389,6 @@ export default function InventoryPage() {
               <Camera className="w-4 h-4" />
               <span>Take Photo</span>
             </button>
-
             <button
               type="button"
               disabled={isAnalyzing}
@@ -421,7 +400,6 @@ export default function InventoryPage() {
             </button>
           </div>
 
-          {/* Quick Sample Preset Trigger */}
           <button
             type="button"
             disabled={isAnalyzing}
@@ -433,7 +411,6 @@ export default function InventoryPage() {
           </button>
         </section>
 
-        {/* Error Feedback */}
         {errorMessage && (
           <div className="bg-secondary-fixed/70 border border-accent-vermilion/40 rounded-xl p-3 flex items-start gap-2.5 text-accent-vermilion">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -444,7 +421,6 @@ export default function InventoryPage() {
           </div>
         )}
 
-        {/* Extracted Inventory Shelf */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h3 className="font-subheading-h3 text-[15px] font-semibold text-text-primary">
@@ -460,7 +436,7 @@ export default function InventoryPage() {
             <div className="rounded-2xl border border-border-hairline bg-surface-container-low/60 p-6 text-center flex flex-col items-center">
               <Sparkles className="w-5 h-5 text-text-muted mb-2" />
               <p className="font-body-small text-[13px] text-text-muted">
-                No materials isolated yet. Snap a photo, upload from your gallery, or load the sample botanical kit to preview the full 4-screen studio.
+                No materials isolated yet. Snap a photo with a reference ruler, upload from your gallery, or load the sample botanical kit.
               </p>
               <button
                 type="button"
@@ -478,7 +454,6 @@ export default function InventoryPage() {
                   key={item.id}
                   className="bg-surface-card rounded-2xl p-3 border border-border-hairline shadow-xs flex flex-col justify-between relative group"
                 >
-                  {/* Top Action Controls */}
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-label-micro text-[10px] font-semibold uppercase tracking-wider text-accent-moss bg-primary-fixed/70 px-2 py-0.5 rounded-full">
                       {ROLE_LABELS[item.role]}
@@ -493,7 +468,6 @@ export default function InventoryPage() {
                     </button>
                   </div>
 
-                  {/* Item Details */}
                   <div>
                     <h4 className="font-body-small text-[13px] font-semibold text-text-primary leading-snug">
                       {item.name}
@@ -508,7 +482,6 @@ export default function InventoryPage() {
                     )}
                   </div>
 
-                  {/* Curvature Micro-Chip */}
                   <div className="mt-2.5 pt-2 border-t border-border-hairline/50 flex items-center justify-between">
                     <span className="font-label-micro text-[10px] font-medium text-text-muted">
                       {item.naturalCurvatureDegrees > 0
@@ -524,7 +497,6 @@ export default function InventoryPage() {
         </section>
       </main>
 
-      {/* Sticky Bottom Action Dock */}
       <aside className="fixed bottom-0 inset-x-0 z-40 bg-surface-base/90 backdrop-blur-md px-margin py-3 pb-safe border-t border-border-hairline/70 max-w-[430px] mx-auto">
         <p className="font-label-micro text-[11px] text-text-muted text-center mb-2">
           {inventory.length > 0
