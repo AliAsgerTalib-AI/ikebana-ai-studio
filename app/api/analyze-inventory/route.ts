@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey,httpOptions: { apiVersion: 'v1beta' } });
 
     const { images } = await req.json();
     if (!Array.isArray(images) || images.length === 0) {
