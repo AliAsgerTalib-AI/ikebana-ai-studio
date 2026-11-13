@@ -1,0 +1,14 @@
+# Dependencies
+/node_modules
+
+# Next.js build output
+/.next/
+/out/
+
+# Local environment secrets (never push GEMINI_API_KEY)
+.env*
+
+# OS & TypeScript cache
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts

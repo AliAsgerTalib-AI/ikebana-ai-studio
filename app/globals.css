@@ -1,0 +1,50 @@
+
+@import "tailwindcss";
+
+@theme {
+  /* Color Palette */
+  --color-surface-base: #F8F7F4;
+  --color-surface-card: #FFFFFF;
+  --color-surface-container: #EFECE6;
+  --color-surface-container-low: #F3F1EC;
+  --color-text-primary: #1A1B19;
+  --color-text-muted: #6F716B;
+  --color-on-surface-variant: #4A4B46;
+  --color-border-hairline: #E6E2DB;
+
+  --color-primary: #1A1B19;
+  --color-on-primary: #FFFFFF;
+  --color-primary-fixed: #DCE7DE;
+  --color-accent-moss: #3E5343;
+  --color-accent-vermilion: #BD4B37;
+  --color-secondary-fixed: #F5E0DC;
+
+  /* Typography */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-playfair), Georgia, serif;
+  --font-display-h1: var(--font-playfair), Georgia, serif;
+  --font-headline-h2: var(--font-playfair), Georgia, serif;
+  --font-subheading-h3: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-body-regular: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-label-micro: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* Custom Font Sizes */
+  --text-display-h1: 2.25rem;
+  --text-headline-h2: 1.25rem;
+  --text-subheading-h3: 1rem;
+  --text-body-small: 0.875rem;
+  --text-label-micro: 0.75rem;
+
+  /* Custom Spacing */
+  --spacing-margin: 1rem;
+  --spacing-space-xs: 0.25rem;
+  --spacing-space-lg: 1.25rem;
+}
+
+/* Safe-area padding helper for mobile notches */
+.pt-safe {
+  padding-top: max(env(safe-area-inset-top), 0.25rem);
+}
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+}
