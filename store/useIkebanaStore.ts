@@ -51,6 +51,7 @@ interface IkebanaState {
   setUploadedImages: (images: UploadedImage[]) => void;
   setAnalysisResult: (items: InventoryItem[], arrangements: ArrangementOption[]) => void;
   updateInventoryItem: (id: string, updates: Partial<Omit<InventoryItem, 'id'>>) => void;
+  updateArrangementPlan: (styleId: ArrangementOption['styleId'], updatedPlan: ArrangementOption) => void;
   removeInventoryItem: (id: string) => void;
   selectStyle: (styleId: ArrangementOption['styleId']) => void;
   setActiveStep: (index: number) => void;
@@ -84,6 +85,14 @@ export const useIkebanaStore = create<IkebanaState>((set) => ({
     set((state) => ({
       inventory: state.inventory.map((item) =>
         item.id === id ? { ...item, ...updates } : item
+      ),
+      renderedPreviewUrl: null,
+    })),
+
+  updateArrangementPlan: (styleId, updatedPlan) =>
+    set((state) => ({
+      arrangements: state.arrangements.map((plan) =>
+        plan.styleId === styleId ? updatedPlan : plan
       ),
       renderedPreviewUrl: null,
     })),

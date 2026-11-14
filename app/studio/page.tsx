@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -10,12 +10,12 @@ import {
   Sparkles,
   Clock,
   Layers,
-  Image as ImageIcon,
   Loader2,
   AlertCircle,
   RefreshCw,
 } from 'lucide-react';
 import { useIkebanaStore, ArrangementOption } from '@/store/useIkebanaStore';
+import TriangleAzimuthSandbox from '@/components/TriangleAzimuthSandbox';
 
 const STYLE_TABS: { id: ArrangementOption['styleId']; shortLabel: string; kanji: string }[] = [
   { id: 'moribana-slanted', shortLabel: 'Slanted', kanji: '傾斜態' },
@@ -32,11 +32,14 @@ export default function StudioPage() {
     selectedStyleId,
     renderedPreviewUrl,
     selectStyle,
+    updateArrangementPlan,
     setRenderedPreviewUrl,
   } = useIkebanaStore();
 
   const [isRendering, setIsRendering] = useState<boolean>(false);
   const [renderError, setRenderError] = useState<string | null>(null);
+  const renderCacheRef = useRef<Record<string, string>>({});
+  const inFlightStyleRef = useRef<string | null>(null);
 
   const currentStyle =
     arrangements.find((a) => a.styleId === selectedStyleId) || arrangements[0];
@@ -47,8 +50,21 @@ export default function StudioPage() {
 
   const canRenderFromSource = uploadedImages.length > 0 && Boolean(currentStyle);
 
-  const handleGenerateReference = async () => {
-    if (!canRenderFromSource || !currentStyle) return;
+  const generateReference = async (
+    forceRefresh = false,
+    planOverride?: ArrangementOption
+  ) => {
+    const targetPlan = planOverride || currentStyle;
+    if (!canRenderFromSource || !targetPlan) return;
+    const styleKey = targetPlan.styleId;
+
+    if (!forceRefresh && renderCacheRef.current[styleKey]) {
+      setRenderedPreviewUrl(renderCacheRef.current[styleKey]);
+      return;
+    }
+
+    if (inFlightStyleRef.current === styleKey) return;
+    inFlightStyleRef.current = styleKey;
     setRenderError(null);
     setIsRendering(true);
 
@@ -59,7 +75,7 @@ export default function StudioPage() {
         body: JSON.stringify({
           images: uploadedImages,
           inventory,
-          selectedPlan: currentStyle,
+          selectedPlan: targetPlan,
         }),
       });
 
@@ -68,19 +84,35 @@ export default function StudioPage() {
         throw new Error(data.error || 'Failed to render target composition.');
       }
 
+      renderCacheRef.current[styleKey] = data.renderedImageBase64;
       setRenderedPreviewUrl(data.renderedImageBase64);
     } catch (err: unknown) {
       setRenderError(
         err instanceof Error ? err.message : 'Unable to generate reference preview.'
       );
     } finally {
+      inFlightStyleRef.current = null;
       setIsRendering(false);
+    }
+  };
+
+  useEffect(() => {
+    if (canRenderFromSource && currentStyle && !renderedPreviewUrl) {
+      generateReference(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStyle?.styleId, uploadedImages.length]);
+
+  const handleCommitSandboxAngles = (updatedPlan: ArrangementOption) => {
+    delete renderCacheRef.current[updatedPlan.styleId];
+    updateArrangementPlan(updatedPlan.styleId, updatedPlan);
+    if (canRenderFromSource) {
+      generateReference(true, updatedPlan);
     }
   };
 
   return (
     <div className="bg-surface-base text-text-primary antialiased min-h-screen flex flex-col font-body-regular selection:bg-primary-fixed max-w-[430px] mx-auto w-full relative shadow-xl border-x border-border-hairline/60">
-      {/* Sticky Top App Bar */}
       <header className="sticky top-0 w-full z-40 pt-safe bg-surface-base/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] border-b border-border-hairline/40">
         <div className="h-14 px-margin flex items-center justify-between">
           <button
@@ -122,7 +154,6 @@ export default function StudioPage() {
           </div>
         ) : (
           <>
-            {/* 3-Style Segmented Selector */}
             <nav
               aria-label="Ikebana style selector"
               className="grid grid-cols-3 gap-1.5 p-1.5 rounded-2xl bg-surface-container-low border border-border-hairline"
@@ -154,7 +185,6 @@ export default function StudioPage() {
               })}
             </nav>
 
-            {/* Active Blueprint Overview Card */}
             <section className="rounded-3xl bg-surface-card border border-border-hairline p-4 shadow-xs flex flex-col gap-3.5">
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -173,14 +203,13 @@ export default function StudioPage() {
                 </div>
               </div>
 
-              {/* Zero-Hallucination Target Reference Preview */}
               <div className="rounded-2xl border border-border-hairline bg-surface-container-low/70 overflow-hidden">
                 {renderedPreviewUrl ? (
                   <div className="relative">
                     <img
                       src={renderedPreviewUrl}
                       alt={`Target reference render for ${currentStyle.styleTitle}`}
-                      className="w-full h-[250px] object-cover"
+                      className="w-full h-[260px] object-cover"
                     />
                     <div className="px-3 py-2 bg-surface-card/95 backdrop-blur-xs border-t border-border-hairline/60 flex items-center justify-between gap-2">
                       <span className="font-label-micro text-[10px] font-semibold text-accent-moss">
@@ -189,7 +218,7 @@ export default function StudioPage() {
                       <button
                         type="button"
                         disabled={isRendering || !canRenderFromSource}
-                        onClick={handleGenerateReference}
+                        onClick={() => generateReference(true)}
                         className="text-[11px] font-semibold text-text-primary hover:text-accent-moss inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
                       >
                         <RefreshCw
@@ -199,39 +228,36 @@ export default function StudioPage() {
                       </button>
                     </div>
                   </div>
+                ) : isRendering ? (
+                  <div className="h-[220px] p-4 flex flex-col items-center justify-center text-center gap-2">
+                    <Loader2 className="w-6 h-6 text-accent-moss animate-spin" />
+                    <p className="font-serif text-[15px] font-semibold text-text-primary">
+                      Composing Target Reference...
+                    </p>
+                    <p className="font-label-micro text-[11px] text-text-muted max-w-[240px]">
+                      Assembling only your photographed vessel, stems, and stones at the blueprint angles.
+                    </p>
+                  </div>
                 ) : (
-                  <div className="p-3.5 flex flex-col gap-2.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-body-small text-[13px] font-semibold text-text-primary">
-                          Target Composition Preview
-                        </p>
-                        <p className="font-label-micro text-[11px] text-text-muted mt-0.5 leading-relaxed">
-                          {canRenderFromSource
-                            ? 'Composites only your uploaded vessel, stems, and stones at the exact blueprint angles.'
-                            : 'Upload your own material photos in Inventory to render a zero-hallucination target preview.'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={!canRenderFromSource || isRendering}
-                      onClick={handleGenerateReference}
-                      className="h-10 rounded-full bg-surface-card border border-border-hairline text-text-primary font-body-small text-[12px] font-semibold flex items-center justify-center gap-2 hover:bg-surface-container active:scale-98 transition-all shadow-2xs cursor-pointer disabled:opacity-45 disabled:pointer-events-none"
-                    >
-                      {isRendering ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 text-accent-moss animate-spin" />
-                          <span>Composing From Your Materials...</span>
-                        </>
-                      ) : (
-                        <>
-                          <ImageIcon className="w-3.5 h-3.5 text-accent-moss" />
-                          <span>Generate Target Reference</span>
-                        </>
-                      )}
-                    </button>
+                  <div className="p-3.5 flex flex-col gap-2">
+                    <p className="font-body-small text-[13px] font-semibold text-text-primary">
+                      Target Composition Reference
+                    </p>
+                    <p className="font-label-micro text-[11px] text-text-muted leading-relaxed">
+                      {canRenderFromSource
+                        ? 'Reference render paused — tap below to generate from your uploaded photos.'
+                        : 'Upload your own material photos in Inventory to auto-generate a zero-hallucination target image.'}
+                    </p>
+                    {canRenderFromSource && (
+                      <button
+                        type="button"
+                        onClick={() => generateReference(true)}
+                        className="h-10 rounded-full bg-primary text-on-primary font-body-small text-[12px] font-semibold flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Generate Target Reference</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -239,11 +265,13 @@ export default function StudioPage() {
               {renderError && (
                 <div className="bg-secondary-fixed/70 border border-accent-vermilion/40 rounded-xl p-2.5 flex items-start gap-2 text-accent-vermilion">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span className="text-[11px] leading-snug">{renderError}</span>
+                  <div className="text-[11px] leading-snug">
+                    <span className="font-semibold block">Reference Render Issue</span>
+                    <span>{renderError}</span>
+                  </div>
                 </div>
               )}
 
-              {/* Zero-Kenzan DIY Anchor Callout */}
               <div className="rounded-2xl bg-primary-fixed/45 border border-accent-moss/25 p-3.5 flex flex-col gap-1.5">
                 <div className="flex items-center gap-1.5 text-accent-moss">
                   <ShieldCheck className="w-4 h-4 shrink-0" />
@@ -257,7 +285,13 @@ export default function StudioPage() {
               </div>
             </section>
 
-            {/* Structural Steps Preview */}
+            {/* Interactive 2D Side-Elevation & Top-Down Azimuth Sandbox */}
+            <TriangleAzimuthSandbox
+              plan={currentStyle}
+              inventory={inventory}
+              onCommit={handleCommitSandboxAngles}
+            />
+
             <section className="flex flex-col gap-2.5">
               <div className="flex items-center justify-between">
                 <h3 className="font-subheading-h3 text-[15px] font-semibold text-text-primary flex items-center gap-1.5">
@@ -298,7 +332,6 @@ export default function StudioPage() {
         )}
       </main>
 
-      {/* Sticky Bottom Action Dock */}
       <aside className="fixed bottom-0 inset-x-0 z-40 bg-surface-base/90 backdrop-blur-md px-margin py-3 pb-safe border-t border-border-hairline/70 max-w-[430px] mx-auto">
         <button
           type="button"
