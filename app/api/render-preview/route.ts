@@ -35,7 +35,20 @@ export async function POST(req: NextRequest) {
       },
     }));
 
-    const inventoryList = (inventory || [])
+    const vesselItem = (inventory || []).find(
+      (item: { role: string }) => item.role === 'vessel'
+    );
+
+    const vesselLockText = vesselItem
+      ? `LOCKED VESSEL IDENTITY (CRITICAL — DO NOT ALTER):
+- Exact Container: ${vesselItem.name} (${vesselItem.dimensions})${vesselItem.notes ? ` — ${vesselItem.notes}` : ''}
+- You MUST reproduce the EXACT vase/container shown in the attached reference photograph(s): identical silhouette, height-to-width proportions, rim lip shape, neck/body contour, material (e.g., glass, ceramic, metal, stoneware), color/glaze, transparency, and surface texture.
+- NEVER replace this container with a generic shallow ceramic suiban bowl or any other vase.`
+      : `LOCKED VESSEL IDENTITY (CRITICAL — DO NOT ALTER):
+- Reproduce the EXACT container/vase shown in the attached reference photograph(s) with identical shape, proportions, color, material, and rim profile. Never substitute a generic bowl.`;
+
+    const botanicalItems = (inventory || [])
+      .filter((item: { role: string }) => item.role !== 'vessel')
       .map(
         (item: { role: string; name: string; dimensions: string; notes?: string }) =>
           `- [${item.role.toUpperCase()}] ${item.name} (${item.dimensions})${item.notes ? `: ${item.notes}` : ''}`
@@ -55,36 +68,40 @@ export async function POST(req: NextRequest) {
       )
       .join('\n');
 
-    const prompt = `Create a photorealistic eye-level studio reference photograph showing the completed Ikebana arrangement assembled from the exact physical materials shown in the reference photo(s).
+    const prompt = `Edit and composite the exact physical objects shown in the attached reference photograph(s) into a completed eye-level Ikebana arrangement.
 
-STRICT ZERO-HALLUCINATION CONSTRAINTS:
-1. Use ONLY the exact vessel, branches, flowers, foliage, and stones visible in the attached reference image(s). Match their exact colors, petal shapes, bark texture, stone shapes, and ceramic glaze.
-2. Do NOT add any extra flowers, filler leaves, moss, decorative pebbles, stands, or metal kenzan pin frogs that are not present in the reference image(s). Do NOT include the measuring ruler in the final arrangement.
-3. Follow the exact structural blueprint "${selectedPlan.styleTitle}" below:
+${vesselLockText}
 
-DETECTED MATERIALS & CALIBRATED SIZES:
-${inventoryList}
+STRICT ZERO-HALLUCINATION MATERIAL RULES:
+1. Keep the EXACT vase/container from the source photo standing upright on a clean matte neutral surface, and insert the botanical stems and anchors from the source photo directly into that exact container.
+2. Use ONLY the exact branches, flowers, foliage, and stones visible in the attached reference image(s)—preserving their exact petal colors, stem thickness, bark/leaf shape, and stone textures.
+3. Do NOT invent extra flowers, filler greenery, moss, or metal kenzan frogs not present in the source photo(s), and remove the measuring ruler from the scene.
 
-ZERO-KENZAN ANCHOR MECHANISM:
+ARRANGEMENT BLUEPRINT ("${selectedPlan.styleTitle}"):
+BOTANICAL ELEMENTS & ANCHORS:
+${botanicalItems}
+
+INTERNAL ANCHORING MECHANISM:
 - ${selectedPlan.diyAnchorMechanism?.methodName}: ${selectedPlan.diyAnchorMechanism?.setupInstructions}
 
-EXACT CUT LENGTHS, CURVES & PLACEMENT ANGLES:
+EXACT LENGTHS, CURVES & PLACEMENT ANGLES:
 ${stepList}
 
-COMPOSITION & LIGHTING:
-- Eye-level front-facing view on a clean, quiet matte neutral surface with soft natural window light and realistic water reflections inside the vessel.
-- Preserve authentic asymmetric scalene balance and generous negative space (Ma) matching the exact angles specified above.`;
+PHOTOGRAPHIC FRAMING:
+- Eye-level front view showing the full height of the exact source vase and the full height of the Shin branch above it, lit with soft natural studio window light.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: [{ role: 'user', parts: [{ text: prompt }, ...imageParts] }],
+      contents: [{ role: 'user', parts: [...imageParts, { text: prompt }] }],
       config: {
         responseModalities: ['IMAGE'],
       },
     });
 
     const parts = response.candidates?.[0]?.content?.parts || [];
-    const imagePart = parts.find((p: { inlineData?: { data?: string; mimeType?: string } }) => p.inlineData?.data);
+    const imagePart = parts.find(
+      (p: { inlineData?: { data?: string; mimeType?: string } }) => p.inlineData?.data
+    );
 
     if (!imagePart?.inlineData?.data) {
       throw new Error('No preview image returned from Gemini.');
