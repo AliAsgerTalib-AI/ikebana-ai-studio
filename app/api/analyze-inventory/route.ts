@@ -3,6 +3,18 @@ import { GoogleGenAI, Type, Schema } from '@google/genai';
 
 export const maxDuration = 60;
 
+const SCHOOL_RULES: Record<string, string> = {
+  sogetsu: `SŌGETSU SCHOOL RULEBOOK (草月流):
+- Emphasize sculptural line, dramatic asymmetry, negative space (Ma), and creative structural tension.
+- Allow rim-to-rim tension arches, bold diagonal planes, and expressive Tameru curves while respecting zero-kenzan stability.`,
+  ikenobo: `IKENOBŌ SCHOOL RULEBOOK (池坊 — Shōka / Classical Moribana):
+- Strictly enforce MIZUGIWA ("water's edge"): all primary stems (Shin, Soe, Hikae/Tai) must emerge together from a single unified point and rise tightly bundled for 50–80mm above the water surface before branching into their respective angles.
+- Maintain dignified, restrained vertical poise and classical scalene hierarchy.`,
+  ohara: `OHARA SCHOOL RULEBOOK (小原流 — Landscape Moribana / Hana-ishō):
+- Emphasize seasonal landscape naturalism and expansive visible water surface.
+- Favor lower, sweeping horizontal planes, natural cluster groupings at the base, and gentle water-skimming angles rather than tall vertical spires.`,
+};
+
 const inventoryAnalysisSchema: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -106,42 +118,54 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const ai = new GoogleGenAI({ apiKey,httpOptions: { apiVersion: 'v1beta' } });
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: { apiVersion: 'v1beta' },
+    });
 
-    const { images } = await req.json();
-    if (!Array.isArray(images) || images.length === 0) {
+    const { images = [], school = 'sogetsu', existingInventory } = await req.json();
+    const hasImages = Array.isArray(images) && images.length > 0;
+    const hasExistingInventory =
+      Array.isArray(existingInventory) && existingInventory.length > 0;
+
+    if (!hasImages && !hasExistingInventory) {
       return NextResponse.json(
-        { error: 'At least one material photo is required.' },
+        { error: 'At least one material photo or existing inventory list is required.' },
         { status: 400 }
       );
     }
 
-    const imageParts = images.map(
-      (img: { base64: string; mimeType?: string }) => ({
-        inlineData: {
-          data: img.base64.includes(',')
-            ? img.base64.split(',')[1]
-            : img.base64,
-          mimeType: img.mimeType || 'image/jpeg',
-        },
-      })
-    );
+    const activeSchoolRule = SCHOOL_RULES[school] || SCHOOL_RULES.sogetsu;
+
+    const imageParts = hasImages
+      ? images.map((img: { base64: string; mimeType?: string }) => ({
+          inlineData: {
+            data: img.base64.includes(',')
+              ? img.base64.split(',')[1]
+              : img.base64,
+            mimeType: img.mimeType || 'image/jpeg',
+          },
+        }))
+      : [];
+
+    const inventoryInstruction = hasExistingInventory
+      ? `USE THIS VERIFIED INVENTORY LIST VERBATIM (return it unchanged in identifiedItems):
+${JSON.stringify(existingInventory, null, 2)}`
+      : `STEP 1 — REFERENCE SCALE CALIBRATION:
+- Check if a ruler, measuring tape, or grid mat is visible in the photo(s) and calibrate pixel-to-millimeter scale before measuring any element.
+STEP 2 — ZERO-HALLUCINATION INVENTORY EXTRACTION:
+- Extract ONLY physical vessels, branches, flower stems, foliage, and stones/twigs visibly present in the photo(s). Do NOT list the ruler itself.`;
 
     const prompt = `You are a master Ikebana structural architect and botanical photogrammetry analyst.
 
-STEP 1 — REFERENCE SCALE CALIBRATION:
-- Check if a ruler, measuring tape, or grid mat is visible in the photo(s).
-- If a ruler is present, calibrate pixel-to-millimeter scale directly from its visible graduations before measuring any botanical element or vessel.
-- If no ruler is visible, estimate realistic proportions conservatively.
+${activeSchoolRule}
 
-STEP 2 — ZERO-HALLUCINATION INVENTORY EXTRACTION:
-- Extract ONLY physical vessels, branches, flower stems, foliage, and stones/twigs visibly present in the photo(s). Do NOT list the ruler itself as a botanical item.
-- Record millimeter dimensions, natural curvature in degrees, and structural roles (vessel, shin, soe, hikae, anchor, foliage).
+${inventoryInstruction}
 
-STEP 3 — THREE ZERO-KENZAN ARRANGEMENT BLUEPRINTS:
-- Generate 3 compositions ("moribana-slanted", "moribana-upright", "jiyuka-freestyle") using ONLY detected items and organic anchoring (stones, Komidome forked-twig wedges, Juji-dome cross-splits, or rim tension).
-- Ensure Shin length respects classical vessel proportions (~1.5x vessel diameter + height) based on calibrated measurements.
-- Include 4-5 sequential steps per style with millimeter Mizukiri underwater cuts, hand-warmed Tameru bending guidance, and placementAngles starting with the tilt degree (e.g., "45° forward tilt, 30° left azimuth").`;
+STEP 3 — THREE ZERO-KENZAN ARRANGEMENT BLUEPRINTS UNDER THIS SCHOOL'S AESTHETIC:
+- Generate 3 compositions ("moribana-slanted", "moribana-upright", "jiyuka-freestyle") using ONLY the detected/verified items and organic anchoring (stones, Komidome forked-twig wedges, Juji-dome cross-splits, or rim tension).
+- Reflect the selected school's specific structural laws in every styleTitle, anchor setup, cut length, and placement angle.
+- Include 4–5 sequential steps per style with millimeter Mizukiri underwater cuts, hand-warmed Tameru bending guidance, and placementAngles starting with the tilt degree (e.g., "45° forward tilt, 30° left azimuth").`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',

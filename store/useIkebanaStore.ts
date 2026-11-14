@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+export type IkebanaSchool = 'sogetsu' | 'ikenobo' | 'ohara';
+
 export interface UploadedImage {
   base64: string;
   mimeType: string;
@@ -43,6 +45,7 @@ interface IkebanaState {
   uploadedImages: UploadedImage[];
   inventory: InventoryItem[];
   arrangements: ArrangementOption[];
+  selectedSchool: IkebanaSchool;
   selectedStyleId: ArrangementOption['styleId'];
   activeStep: number;
   activeStepIndex: number;
@@ -50,9 +53,11 @@ interface IkebanaState {
 
   setUploadedImages: (images: UploadedImage[]) => void;
   setAnalysisResult: (items: InventoryItem[], arrangements: ArrangementOption[]) => void;
+  setArrangementsOnly: (arrangements: ArrangementOption[]) => void;
   updateInventoryItem: (id: string, updates: Partial<Omit<InventoryItem, 'id'>>) => void;
   updateArrangementPlan: (styleId: ArrangementOption['styleId'], updatedPlan: ArrangementOption) => void;
   removeInventoryItem: (id: string) => void;
+  selectSchool: (school: IkebanaSchool) => void;
   selectStyle: (styleId: ArrangementOption['styleId']) => void;
   setActiveStep: (index: number) => void;
   setActiveStepIndex: (index: number) => void;
@@ -64,6 +69,7 @@ export const useIkebanaStore = create<IkebanaState>((set) => ({
   uploadedImages: [],
   inventory: [],
   arrangements: [],
+  selectedSchool: 'sogetsu',
   selectedStyleId: 'moribana-slanted',
   activeStep: 0,
   activeStepIndex: 0,
@@ -80,6 +86,17 @@ export const useIkebanaStore = create<IkebanaState>((set) => ({
       activeStepIndex: 0,
       renderedPreviewUrl: null,
     }),
+
+  setArrangementsOnly: (arrangements) =>
+    set((state) => ({
+      arrangements,
+      selectedStyleId: arrangements.some((a) => a.styleId === state.selectedStyleId)
+        ? state.selectedStyleId
+        : arrangements[0]?.styleId ?? 'moribana-slanted',
+      activeStep: 0,
+      activeStepIndex: 0,
+      renderedPreviewUrl: null,
+    })),
 
   updateInventoryItem: (id, updates) =>
     set((state) => ({
@@ -103,6 +120,14 @@ export const useIkebanaStore = create<IkebanaState>((set) => ({
       renderedPreviewUrl: null,
     })),
 
+  selectSchool: (school) =>
+    set({
+      selectedSchool: school,
+      activeStep: 0,
+      activeStepIndex: 0,
+      renderedPreviewUrl: null,
+    }),
+
   selectStyle: (styleId) =>
     set((state) => ({
       selectedStyleId: styleId,
@@ -122,6 +147,7 @@ export const useIkebanaStore = create<IkebanaState>((set) => ({
       uploadedImages: [],
       inventory: [],
       arrangements: [],
+      selectedSchool: 'sogetsu',
       selectedStyleId: 'moribana-slanted',
       activeStep: 0,
       activeStepIndex: 0,

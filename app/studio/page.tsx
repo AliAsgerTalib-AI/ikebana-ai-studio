@@ -13,9 +13,40 @@ import {
   Loader2,
   AlertCircle,
   RefreshCw,
+  BookOpen,
 } from 'lucide-react';
-import { useIkebanaStore, ArrangementOption } from '@/store/useIkebanaStore';
+import {
+  useIkebanaStore,
+  ArrangementOption,
+  IkebanaSchool,
+} from '@/store/useIkebanaStore';
 import TriangleAzimuthSandbox from '@/components/TriangleAzimuthSandbox';
+
+const SCHOOL_PROFILES: {
+  id: IkebanaSchool;
+  name: string;
+  kanji: string;
+  principle: string;
+}[] = [
+  {
+    id: 'sogetsu',
+    name: 'Sōgetsu',
+    kanji: '草月流',
+    principle: 'Sculptural line, bold Ma & creative vessel tension',
+  },
+  {
+    id: 'ikenobo',
+    name: 'Ikenobō',
+    kanji: '池坊',
+    principle: 'Unified Mizugiwa trunk (50–80mm) & classical poise',
+  },
+  {
+    id: 'ohara',
+    name: 'Ohara',
+    kanji: '小原流',
+    principle: 'Low landscape naturalism & open water reflection',
+  },
+];
 
 const STYLE_TABS: { id: ArrangementOption['styleId']; shortLabel: string; kanji: string }[] = [
   { id: 'moribana-slanted', shortLabel: 'Slanted', kanji: '傾斜態' },
@@ -29,20 +60,27 @@ export default function StudioPage() {
     uploadedImages,
     inventory,
     arrangements,
+    selectedSchool,
     selectedStyleId,
     renderedPreviewUrl,
+    selectSchool,
     selectStyle,
+    setArrangementsOnly,
     updateArrangementPlan,
     setRenderedPreviewUrl,
   } = useIkebanaStore();
 
   const [isRendering, setIsRendering] = useState<boolean>(false);
+  const [isSwitchingSchool, setIsSwitchingSchool] = useState<boolean>(false);
   const [renderError, setRenderError] = useState<string | null>(null);
   const renderCacheRef = useRef<Record<string, string>>({});
   const inFlightStyleRef = useRef<string | null>(null);
 
   const currentStyle =
     arrangements.find((a) => a.styleId === selectedStyleId) || arrangements[0];
+
+  const activeSchoolProfile =
+    SCHOOL_PROFILES.find((s) => s.id === selectedSchool) || SCHOOL_PROFILES[0];
 
   const totalMinutes = currentStyle
     ? currentStyle.steps.reduce((sum, s) => sum + (s.estimatedMinutes || 3), 0)
@@ -52,19 +90,21 @@ export default function StudioPage() {
 
   const generateReference = async (
     forceRefresh = false,
-    planOverride?: ArrangementOption
+    planOverride?: ArrangementOption,
+    schoolOverride?: IkebanaSchool
   ) => {
     const targetPlan = planOverride || currentStyle;
+    const activeSchool = schoolOverride || selectedSchool;
     if (!canRenderFromSource || !targetPlan) return;
-    const styleKey = targetPlan.styleId;
+    const cacheKey = `${activeSchool}:${targetPlan.styleId}`;
 
-    if (!forceRefresh && renderCacheRef.current[styleKey]) {
-      setRenderedPreviewUrl(renderCacheRef.current[styleKey]);
+    if (!forceRefresh && renderCacheRef.current[cacheKey]) {
+      setRenderedPreviewUrl(renderCacheRef.current[cacheKey]);
       return;
     }
 
-    if (inFlightStyleRef.current === styleKey) return;
-    inFlightStyleRef.current = styleKey;
+    if (inFlightStyleRef.current === cacheKey) return;
+    inFlightStyleRef.current = cacheKey;
     setRenderError(null);
     setIsRendering(true);
 
@@ -76,6 +116,7 @@ export default function StudioPage() {
           images: uploadedImages,
           inventory,
           selectedPlan: targetPlan,
+          school: activeSchool,
         }),
       });
 
@@ -84,7 +125,7 @@ export default function StudioPage() {
         throw new Error(data.error || 'Failed to render target composition.');
       }
 
-      renderCacheRef.current[styleKey] = data.renderedImageBase64;
+      renderCacheRef.current[cacheKey] = data.renderedImageBase64;
       setRenderedPreviewUrl(data.renderedImageBase64);
     } catch (err: unknown) {
       setRenderError(
@@ -97,17 +138,52 @@ export default function StudioPage() {
   };
 
   useEffect(() => {
-    if (canRenderFromSource && currentStyle && !renderedPreviewUrl) {
+    if (canRenderFromSource && currentStyle && !renderedPreviewUrl && !isSwitchingSchool) {
       generateReference(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStyle?.styleId, uploadedImages.length]);
+  }, [currentStyle?.styleId, selectedSchool, uploadedImages.length, isSwitchingSchool]);
+
+  const handleSchoolChange = async (newSchool: IkebanaSchool) => {
+    if (newSchool === selectedSchool || isSwitchingSchool) return;
+    selectSchool(newSchool);
+    setRenderError(null);
+
+    if (inventory.length === 0) return;
+
+    setIsSwitchingSchool(true);
+    try {
+      const response = await fetch('/api/analyze-inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          images: uploadedImages,
+          school: newSchool,
+          existingInventory: inventory,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to adapt blueprints to school rulebook.');
+      }
+      if (Array.isArray(data.arrangements) && data.arrangements.length > 0) {
+        setArrangementsOnly(data.arrangements);
+      }
+    } catch (err: unknown) {
+      setRenderError(
+        err instanceof Error ? err.message : 'Unable to switch school rulebook.'
+      );
+    } finally {
+      setIsSwitchingSchool(false);
+    }
+  };
 
   const handleCommitSandboxAngles = (updatedPlan: ArrangementOption) => {
-    delete renderCacheRef.current[updatedPlan.styleId];
+    const cacheKey = `${selectedSchool}:${updatedPlan.styleId}`;
+    delete renderCacheRef.current[cacheKey];
     updateArrangementPlan(updatedPlan.styleId, updatedPlan);
     if (canRenderFromSource) {
-      generateReference(true, updatedPlan);
+      generateReference(true, updatedPlan, selectedSchool);
     }
   };
 
@@ -154,6 +230,54 @@ export default function StudioPage() {
           </div>
         ) : (
           <>
+            {/* School-Specific Rulebook & Aesthetic Profile Switcher */}
+            <section className="rounded-2xl bg-surface-card border border-border-hairline p-3 shadow-2xs flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="font-label-micro text-[10px] font-bold uppercase tracking-wider text-text-muted flex items-center gap-1">
+                  <BookOpen className="w-3 h-3 text-accent-moss" />
+                  <span>School Rulebook</span>
+                </span>
+                {isSwitchingSchool && (
+                  <span className="font-label-micro text-[10px] font-semibold text-accent-moss inline-flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>Recalculating...</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-1.5">
+                {SCHOOL_PROFILES.map((school) => {
+                  const active = school.id === selectedSchool;
+                  return (
+                    <button
+                      key={school.id}
+                      type="button"
+                      disabled={isSwitchingSchool}
+                      onClick={() => handleSchoolChange(school.id)}
+                      className={`py-1.5 px-2 rounded-xl border text-center transition-all cursor-pointer disabled:opacity-50 ${
+                        active
+                          ? 'bg-primary text-on-primary border-primary shadow-2xs'
+                          : 'bg-surface-container-low text-text-primary border-border-hairline hover:bg-surface-container'
+                      }`}
+                    >
+                      <span className="font-serif text-[11px] font-semibold block leading-tight">
+                        {school.kanji}
+                      </span>
+                      <span className="font-label-micro text-[10px] font-medium block mt-0.5">
+                        {school.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p className="font-label-micro text-[11px] text-text-muted leading-snug px-0.5">
+                <strong className="text-text-primary">{activeSchoolProfile.name}:</strong>{' '}
+                {activeSchoolProfile.principle}
+              </p>
+            </section>
+
+            {/* 3-Style Segmented Selector */}
             <nav
               aria-label="Ikebana style selector"
               className="grid grid-cols-3 gap-1.5 p-1.5 rounded-2xl bg-surface-container-low border border-border-hairline"
@@ -189,7 +313,7 @@ export default function StudioPage() {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <span className="font-label-micro text-[10px] font-bold uppercase tracking-wider text-accent-moss bg-primary-fixed/80 px-2.5 py-0.5 rounded-full">
-                    {currentStyle.difficulty} · {currentStyle.stabilityScore}
+                    {activeSchoolProfile.name} · {currentStyle.difficulty} · {currentStyle.stabilityScore}
                   </span>
                   <h2 className="font-serif text-[19px] font-semibold text-text-primary mt-1.5 leading-snug">
                     {currentStyle.styleTitle}
@@ -213,7 +337,7 @@ export default function StudioPage() {
                     />
                     <div className="px-3 py-2 bg-surface-card/95 backdrop-blur-xs border-t border-border-hairline/60 flex items-center justify-between gap-2">
                       <span className="font-label-micro text-[10px] font-semibold text-accent-moss">
-                        Target Reference · Source Materials Only
+                        {activeSchoolProfile.name} Target · Source Materials Only
                       </span>
                       <button
                         type="button"
@@ -228,11 +352,13 @@ export default function StudioPage() {
                       </button>
                     </div>
                   </div>
-                ) : isRendering ? (
+                ) : isRendering || isSwitchingSchool ? (
                   <div className="h-[220px] p-4 flex flex-col items-center justify-center text-center gap-2">
                     <Loader2 className="w-6 h-6 text-accent-moss animate-spin" />
                     <p className="font-serif text-[15px] font-semibold text-text-primary">
-                      Composing Target Reference...
+                      {isSwitchingSchool
+                        ? `Applying ${activeSchoolProfile.name} Rulebook...`
+                        : 'Composing Target Reference...'}
                     </p>
                     <p className="font-label-micro text-[11px] text-text-muted max-w-[240px]">
                       Assembling only your photographed vessel, stems, and stones at the blueprint angles.
@@ -266,7 +392,7 @@ export default function StudioPage() {
                 <div className="bg-secondary-fixed/70 border border-accent-vermilion/40 rounded-xl p-2.5 flex items-start gap-2 text-accent-vermilion">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                   <div className="text-[11px] leading-snug">
-                    <span className="font-semibold block">Reference Render Issue</span>
+                    <span className="font-semibold block">Studio Update</span>
                     <span>{renderError}</span>
                   </div>
                 </div>
@@ -335,7 +461,7 @@ export default function StudioPage() {
       <aside className="fixed bottom-0 inset-x-0 z-40 bg-surface-base/90 backdrop-blur-md px-margin py-3 pb-safe border-t border-border-hairline/70 max-w-[430px] mx-auto">
         <button
           type="button"
-          disabled={!currentStyle}
+          disabled={!currentStyle || isSwitchingSchool}
           onClick={() => router.push('/workbench')}
           className="w-full h-[52px] rounded-full bg-primary hover:bg-accent-moss text-on-primary font-body-small text-[14px] font-semibold shadow-sm flex items-center justify-center gap-2 active:scale-98 transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
         >
